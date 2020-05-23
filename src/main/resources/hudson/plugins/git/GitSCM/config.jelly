@@ -23,4 +23,11 @@
         <f:hetero-list name="extensions" items="${instance.extensions}" descriptors="${descriptor.getExtensionDescriptors()}"
                        hasHeader="true" />
     </f:entry>
+     <j:set var="descriptors" value="${descriptor.cacheStrategies(it)}"/>
+  		<j:if test="${!descriptors.isEmpty()}">
+    	<f:entry title="Automatic Caching">
+    <f:hetero-list name="cacheStrategies" items="${instance.cacheStrategies}"
+                   descriptors="${descriptors}"
+                   hasHeader="true"/>
+    </f:entry>
 </j:jelly>

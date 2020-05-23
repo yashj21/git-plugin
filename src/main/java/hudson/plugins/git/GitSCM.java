@@ -29,6 +29,8 @@ import hudson.model.Saveable;
 import hudson.model.TaskListener;
 import hudson.model.queue.Tasks;
 import hudson.plugins.git.browser.GitRepositoryBrowser;
+import hudson.plugins.git.extensions.CachingStrategy;
+import hudson.plugins.git.extensions.CachingStrategyDescriptor;
 import hudson.plugins.git.extensions.GitSCMExtension;
 import hudson.plugins.git.extensions.GitSCMExtensionDescriptor;
 import hudson.plugins.git.extensions.impl.AuthorInChangelog;
@@ -144,6 +146,9 @@ public class GitSCM extends GitSCMBackwardCompatibility {
     private List<BranchSpec> branches;
     private boolean doGenerateSubmoduleConfigurations;
 
+    @CheckForNull
+    private List<CachingStrategy> cacheStrategies;
+    
     @CheckForNull
     public String gitTool;
     @CheckForNull
@@ -1500,6 +1505,11 @@ public class GitSCM extends GitSCMBackwardCompatibility {
         public List<GitTool> getGitTools() {
             GitTool[] gitToolInstallations = Jenkins.get().getDescriptorByType(GitTool.DescriptorImpl.class).getInstallations();
             return Arrays.asList(gitToolInstallations);
+        }
+        
+        public List<CachingStrategyDescriptor> cacheStrategies(
+                @NonNull Job project) {
+            return CachingStrategyDescriptor.isApplicable(project);
         }
 
         public ListBoxModel doFillGitToolItems() {
