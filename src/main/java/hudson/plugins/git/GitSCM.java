@@ -146,7 +146,6 @@ public class GitSCM extends GitSCMBackwardCompatibility {
     private List<BranchSpec> branches;
     private boolean doGenerateSubmoduleConfigurations;
 
-    @CheckForNull
     private List<CachingStrategy> cacheStrategies;
     
     @CheckForNull
@@ -1097,41 +1096,46 @@ public class GitSCM extends GitSCMBackwardCompatibility {
      */
     private void retrieveChanges(Run build, GitClient git, TaskListener listener) throws IOException, InterruptedException {
         final PrintStream log = listener.getLogger();
-
-        List<RemoteConfig> repos = getParamExpandedRepos(build, listener);
-        if (repos.isEmpty())    return; // defensive check even though this is an invalid configuration
-
-        if (git.hasGitRepo()) {
-            // It's an update
-            if (repos.size() == 1)
-                log.println("Fetching changes from the remote Git repository");
-            else
-                log.println(MessageFormat.format("Fetching changes from {0} remote Git repositories", repos.size()));
-        } else {
-            log.println("Cloning the remote Git repository");
-
-            RemoteConfig rc = repos.get(0);
-            try {
-                CloneCommand cmd = git.clone_().url(rc.getURIs().get(0).toPrivateString()).repositoryName(rc.getName());
-                for (GitSCMExtension ext : extensions) {
-                    ext.decorateCloneCommand(this, build, git, listener, cmd);
-                }
-                cmd.execute();
-            } catch (GitException ex) {
-                ex.printStackTrace(listener.error("Error cloning remote repo '" + rc.getName() + "'"));
-                throw new AbortException("Error cloning remote repo '" + rc.getName() + "'");
-            }
-        }
-
-        for (RemoteConfig remoteRepository : repos) {
-            try {
-                fetchFrom(git, build, listener, remoteRepository);
-            } catch (GitException ex) {
-                /* Allow retry by throwing AbortException instead of
-                 * GitException. See JENKINS-20531. */
-                ex.printStackTrace(listener.error("Error fetching remote repo '" + remoteRepository.getName() + "'"));
-                throw new AbortException("Error fetching remote repo '" + remoteRepository.getName() + "'");
-            }
+        if(cacheStrategies.size()>0) {
+	        for(CachingStrategy cs: cacheStrategies) {
+	        	cs.callCacheImpl(this,build,git,listener);
+	        	}
+        }else {
+	        List<RemoteConfig> repos = getParamExpandedRepos(build, listener);
+	        if (repos.isEmpty())    return; // defensive check even though this is an invalid configuration
+	
+	        if (git.hasGitRepo()) {
+	            // It's an update
+	            if (repos.size() == 1)
+	                log.println("Fetching changes from the remote Git repository");
+	            else
+	                log.println(MessageFormat.format("Fetching changes from {0} remote Git repositories", repos.size()));
+	        } else {
+	            log.println("Cloning the remote Git repository");
+	
+	            RemoteConfig rc = repos.get(0);
+	            try {
+	                CloneCommand cmd = git.clone_().url(rc.getURIs().get(0).toPrivateString()).repositoryName(rc.getName());
+	                for (GitSCMExtension ext : extensions) {
+	                    ext.decorateCloneCommand(this, build, git, listener, cmd);
+	                }
+	                cmd.execute();
+	            } catch (GitException ex) {
+	                ex.printStackTrace(listener.error("Error cloning remote repo '" + rc.getName() + "'"));
+	                throw new AbortException("Error cloning remote repo '" + rc.getName() + "'");
+	            }
+	        }
+	
+	        for (RemoteConfig remoteRepository : repos) {
+	            try {
+	                fetchFrom(git, build, listener, remoteRepository);
+	            } catch (GitException ex) {
+	                /* Allow retry by throwing AbortException instead of
+	                 * GitException. See JENKINS-20531. */
+	                ex.printStackTrace(listener.error("Error fetching remote repo '" + remoteRepository.getName() + "'"));
+	                throw new AbortException("Error fetching remote repo '" + remoteRepository.getName() + "'");
+	            }
+	        }
         }
     }
 
