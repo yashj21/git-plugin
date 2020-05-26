@@ -29,8 +29,6 @@ import hudson.model.Saveable;
 import hudson.model.TaskListener;
 import hudson.model.queue.Tasks;
 import hudson.plugins.git.browser.GitRepositoryBrowser;
-import hudson.plugins.git.extensions.CachingStrategy;
-import hudson.plugins.git.extensions.CachingStrategyDescriptor;
 import hudson.plugins.git.extensions.GitSCMExtension;
 import hudson.plugins.git.extensions.GitSCMExtensionDescriptor;
 import hudson.plugins.git.extensions.impl.AuthorInChangelog;
@@ -146,8 +144,6 @@ public class GitSCM extends GitSCMBackwardCompatibility {
     private List<BranchSpec> branches;
     private boolean doGenerateSubmoduleConfigurations;
 
-    private List<CachingStrategy> cacheStrategies;
-    
     @CheckForNull
     public String gitTool;
     @CheckForNull
@@ -1096,46 +1092,41 @@ public class GitSCM extends GitSCMBackwardCompatibility {
      */
     private void retrieveChanges(Run build, GitClient git, TaskListener listener) throws IOException, InterruptedException {
         final PrintStream log = listener.getLogger();
-        if(cacheStrategies.size()>0) {
-	        for(CachingStrategy cs: cacheStrategies) {
-	        	cs.callCacheImpl(this,build,git,listener);
-	        	}
-        }else {
-	        List<RemoteConfig> repos = getParamExpandedRepos(build, listener);
-	        if (repos.isEmpty())    return; // defensive check even though this is an invalid configuration
-	
-	        if (git.hasGitRepo()) {
-	            // It's an update
-	            if (repos.size() == 1)
-	                log.println("Fetching changes from the remote Git repository");
-	            else
-	                log.println(MessageFormat.format("Fetching changes from {0} remote Git repositories", repos.size()));
-	        } else {
-	            log.println("Cloning the remote Git repository");
-	
-	            RemoteConfig rc = repos.get(0);
-	            try {
-	                CloneCommand cmd = git.clone_().url(rc.getURIs().get(0).toPrivateString()).repositoryName(rc.getName());
-	                for (GitSCMExtension ext : extensions) {
-	                    ext.decorateCloneCommand(this, build, git, listener, cmd);
-	                }
-	                cmd.execute();
-	            } catch (GitException ex) {
-	                ex.printStackTrace(listener.error("Error cloning remote repo '" + rc.getName() + "'"));
-	                throw new AbortException("Error cloning remote repo '" + rc.getName() + "'");
-	            }
-	        }
-	
-	        for (RemoteConfig remoteRepository : repos) {
-	            try {
-	                fetchFrom(git, build, listener, remoteRepository);
-	            } catch (GitException ex) {
-	                /* Allow retry by throwing AbortException instead of
-	                 * GitException. See JENKINS-20531. */
-	                ex.printStackTrace(listener.error("Error fetching remote repo '" + remoteRepository.getName() + "'"));
-	                throw new AbortException("Error fetching remote repo '" + remoteRepository.getName() + "'");
-	            }
-	        }
+
+        List<RemoteConfig> repos = getParamExpandedRepos(build, listener);
+        if (repos.isEmpty())    return; // defensive check even though this is an invalid configuration
+
+        if (git.hasGitRepo()) {
+            // It's an update
+            if (repos.size() == 1)
+                log.println("Fetching changes from the remote Git repository");
+            else
+                log.println(MessageFormat.format("Fetching changes from {0} remote Git repositories", repos.size()));
+        } else {
+            log.println("Cloning the remote Git repository");
+
+            RemoteConfig rc = repos.get(0);
+            try {
+                CloneCommand cmd = git.clone_().url(rc.getURIs().get(0).toPrivateString()).repositoryName(rc.getName());
+                for (GitSCMExtension ext : extensions) {
+                    ext.decorateCloneCommand(this, build, git, listener, cmd);
+                }
+                cmd.execute();
+            } catch (GitException ex) {
+                ex.printStackTrace(listener.error("Error cloning remote repo '" + rc.getName() + "'"));
+                throw new AbortException("Error cloning remote repo '" + rc.getName() + "'");
+            }
+        }
+
+        for (RemoteConfig remoteRepository : repos) {
+            try {
+                fetchFrom(git, build, listener, remoteRepository);
+            } catch (GitException ex) {
+                /* Allow retry by throwing AbortException instead of
+                 * GitException. See JENKINS-20531. */
+                ex.printStackTrace(listener.error("Error fetching remote repo '" + remoteRepository.getName() + "'"));
+                throw new AbortException("Error fetching remote repo '" + remoteRepository.getName() + "'");
+            }
         }
     }
 
@@ -1509,11 +1500,6 @@ public class GitSCM extends GitSCMBackwardCompatibility {
         public List<GitTool> getGitTools() {
             GitTool[] gitToolInstallations = Jenkins.get().getDescriptorByType(GitTool.DescriptorImpl.class).getInstallations();
             return Arrays.asList(gitToolInstallations);
-        }
-        
-        public List<CachingStrategyDescriptor> cacheStrategies(
-                @NonNull Job project) {
-            return CachingStrategyDescriptor.isApplicable(project);
         }
 
         public ListBoxModel doFillGitToolItems() {
