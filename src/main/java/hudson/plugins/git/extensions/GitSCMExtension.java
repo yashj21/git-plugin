@@ -351,9 +351,23 @@ public abstract class GitSCMExtension extends AbstractDescribableImpl<GitSCMExte
     public GitClientType getRequiredClient() {
         return GitClientType.ANY;
     }
+    
+    public boolean hasCachingStrategy(GitSCM scm, Run<?, ?> build, GitClient git, TaskListener listener) {
+    	if (build instanceof AbstractBuild && listener instanceof BuildListener) {
+           return hasCachingStrategy(scm, (AbstractBuild) build, git, (BuildListener) listener);
+        }
+    	return false;
+    }
+    public boolean hasCachingStrategy(GitSCM scm, AbstractBuild<?, ?> build, GitClient git, BuildListener listener) {
+    	if (Util.isOverridden(GitSCMExtension.class, getClass(), "hasCachingStrategy", GitSCM.class, Run.class, GitClient.class, TaskListener.class)) {
+    		return hasCachingStrategy(scm, (Run) build, git, listener);
+        }
+    	return false;
+    }
 
     @Override
     public GitSCMExtensionDescriptor getDescriptor() {
         return (GitSCMExtensionDescriptor) super.getDescriptor();
     }
+
 }
