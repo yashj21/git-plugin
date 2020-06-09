@@ -11,6 +11,7 @@ import hudson.model.AbstractDescribableImpl;
 import hudson.model.AbstractProject;
 import hudson.model.BuildListener;
 import hudson.model.Job;
+import hudson.model.Node;
 import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.plugins.git.GitChangeSet;
@@ -23,7 +24,10 @@ import hudson.scm.SCM;
 import hudson.scm.SCMRevisionState;
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
+
+import org.eclipse.jgit.transport.RemoteConfig;
 import org.jenkinsci.plugins.gitclient.CheckoutCommand;
 import org.jenkinsci.plugins.gitclient.CloneCommand;
 import org.jenkinsci.plugins.gitclient.FetchCommand;
@@ -352,17 +356,19 @@ public abstract class GitSCMExtension extends AbstractDescribableImpl<GitSCMExte
         return GitClientType.ANY;
     }
     
-    public boolean hasCachingStrategy(GitSCM scm, Run<?, ?> build, GitClient git, TaskListener listener) {
+    public FilePath hasCachingStrategy(GitSCM scm, Run<?, ?> build, GitClient git, TaskListener listener,List<RemoteConfig> repos,
+    		Node node) {
     	if (build instanceof AbstractBuild && listener instanceof BuildListener) {
-           return hasCachingStrategy(scm, (AbstractBuild) build, git, (BuildListener) listener);
+          return hasCachingStrategy(scm, (AbstractBuild) build, git, (BuildListener) listener,repos,node);
         }
-    	return false;
+    	return null;
     }
-    public boolean hasCachingStrategy(GitSCM scm, AbstractBuild<?, ?> build, GitClient git, BuildListener listener) {
-    	if (Util.isOverridden(GitSCMExtension.class, getClass(), "hasCachingStrategy", GitSCM.class, Run.class, GitClient.class, TaskListener.class)) {
-    		return hasCachingStrategy(scm, (Run) build, git, listener);
+    public FilePath hasCachingStrategy(GitSCM scm, AbstractBuild<?, ?> build, GitClient git, BuildListener listener,List<RemoteConfig> repos,
+    		Node node) {
+    	if (Util.isOverridden(GitSCMExtension.class, getClass(), "hasCachingStrategy", GitSCM.class, Run.class, GitClient.class, TaskListener.class,List.class,Node.class)) {
+    		return	hasCachingStrategy(scm, (Run) build, git, listener,repos,node);
         }
-    	return false;
+    	return null;
     }
 
     @Override

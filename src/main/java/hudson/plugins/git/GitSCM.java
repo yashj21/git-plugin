@@ -34,6 +34,7 @@ import hudson.plugins.git.extensions.GitSCMExtensionDescriptor;
 import hudson.plugins.git.extensions.impl.AuthorInChangelog;
 import hudson.plugins.git.extensions.impl.BuildChooserSetting;
 import hudson.plugins.git.extensions.impl.ChangelogToBranch;
+import hudson.plugins.git.extensions.impl.CloneOption;
 import hudson.plugins.git.extensions.impl.PathRestriction;
 import hudson.plugins.git.extensions.impl.LocalBranch;
 import hudson.plugins.git.extensions.impl.RelativeTargetDirectory;
@@ -898,9 +899,9 @@ public class GitSCM extends GitSCMBackwardCompatibility {
                 } else {
                     git.addRemoteUrl(remoteRepository.getName(), url.toPrivateASCIIString());
                 }
-
                 FetchCommand fetch = git.fetch_().from(url, remoteRepository.getFetchRefSpecs());
                 for (GitSCMExtension extension : extensions) {
+                	
                     extension.decorateFetchCommand(this, run, git, listener, fetch);
                 }
                 fetch.execute();
@@ -1090,48 +1091,56 @@ public class GitSCM extends GitSCMBackwardCompatibility {
      *
      * By the end of this method, remote refs are updated to include all the commits found in the remote servers.
      */
-    private void retrieveChanges(Run build, GitClient git, TaskListener listener) throws IOException, InterruptedException {
-        final PrintStream log = listener.getLogger();
-        boolean hasCachingStrategy = false;
-        for (GitSCMExtension ext : extensions) {
-           hasCachingStrategy = ext.hasCachingStrategy(this, build, git, listener);
+    private void retrieveChanges(Run build, GitClient git, TaskListener listener, Node node) throws IOException, InterruptedException {
+    	final PrintStream log = listener.getLogger();
+    	FilePath hasCachingStrategy = null;
+        List<RemoteConfig> repos = getParamExpandedRepos(build, listener);
+        if (repos.isEmpty())    return; // defensive check even though this is an invalid configuration
+
+        if (git.hasGitRepo()) { // this checks for workspace repo
+            // It's an update
+            if (repos.size() == 1)
+                log.println("Fetching changes from the remote Git repository");
+            else
+                log.println(MessageFormat.format("Fetching changes from {0} remote Git repositories", repos.size()));
+        } else {
+            log.println("Cloning the remote Git repository");
+
+            RemoteConfig rc = repos.get(0);
+            for (GitSCMExtension ext : extensions) {
+                hasCachingStrategy = ext.hasCachingStrategy(this, build, git, listener,repos, node);
+            }
+            
+            try {
+                CloneCommand cmd = git.clone_().url(rc.getURIs().get(0).toPrivateString()).repositoryName(rc.getName());
+                for (GitSCMExtension ext : extensions) {
+                    ext.decorateCloneCommand(this, build, git, listener, cmd);
+                }
+                if(hasCachingStrategy!=null) {
+                    // Add cache to the clone command
+                    CloneOption reference = new CloneOption(false, false, hasCachingStrategy.getRemote(), null);
+                    reference.decorateCloneCommand(this, build, git, listener, cmd);
+                }
+                cmd.execute();
+            } catch (GitException ex) {
+                ex.printStackTrace(listener.error("Error cloning remote repo '" + rc.getName() + "'"));
+                throw new AbortException("Error cloning remote repo '" + rc.getName() + "'");
+            }
         }
-        if(!hasCachingStrategy) {
-	        List<RemoteConfig> repos = getParamExpandedRepos(build, listener);
-	        if (repos.isEmpty())    return; // defensive check even though this is an invalid configuration
-	
-	        if (git.hasGitRepo()) {
-	            // It's an update
-	            if (repos.size() == 1)
-	                log.println("Fetching changes from the remote Git repository");
-	            else
-	                log.println(MessageFormat.format("Fetching changes from {0} remote Git repositories", repos.size()));
-	        } else {
-	            log.println("Cloning the remote Git repository");
-	
-	            RemoteConfig rc = repos.get(0);
-	            try {
-	                CloneCommand cmd = git.clone_().url(rc.getURIs().get(0).toPrivateString()).repositoryName(rc.getName());
-	                for (GitSCMExtension ext : extensions) {
-	                    ext.decorateCloneCommand(this, build, git, listener, cmd);
-	                }
-	                cmd.execute();
-	            } catch (GitException ex) {
-	                ex.printStackTrace(listener.error("Error cloning remote repo '" + rc.getName() + "'"));
-	                throw new AbortException("Error cloning remote repo '" + rc.getName() + "'");
-	            }
-	        }
-	
-	        for (RemoteConfig remoteRepository : repos) {
-	            try {
-	                fetchFrom(git, build, listener, remoteRepository);
-	            } catch (GitException ex) {
-	                /* Allow retry by throwing AbortException instead of
-	                 * GitException. See JENKINS-20531. */
-	                ex.printStackTrace(listener.error("Error fetching remote repo '" + remoteRepository.getName() + "'"));
-	                throw new AbortException("Error fetching remote repo '" + remoteRepository.getName() + "'");
-	            }
-	        }
+        if(hasCachingStrategy==null) {
+		    for (GitSCMExtension ext : extensions) {
+		    	hasCachingStrategy = ext.hasCachingStrategy(this, build, git, listener,repos, node);
+		    }
+        }
+        for (RemoteConfig remoteRepository : repos) {
+            try {
+                fetchFrom(git, build, listener, remoteRepository);
+            } catch (GitException ex) {
+                /* Allow retry by throwing AbortException instead of
+                 * GitException. See JENKINS-20531. */
+                ex.printStackTrace(listener.error("Error fetching remote repo '" + remoteRepository.getName() + "'"));
+                throw new AbortException("Error fetching remote repo '" + remoteRepository.getName() + "'");
+            }
         }
     }
 
@@ -1161,7 +1170,7 @@ public class GitSCM extends GitSCMBackwardCompatibility {
             ext.beforeCheckout(this, build, git, listener);
         }
 
-        retrieveChanges(build, git, listener);
+        retrieveChanges(build, git, listener, GitUtils.workspaceToNode(workspace));
         Build revToBuild = determineRevisionToBuild(build, buildData, environment, git, listener);
 
         // Track whether we're trying to add a duplicate BuildData, now that it's been updated with
